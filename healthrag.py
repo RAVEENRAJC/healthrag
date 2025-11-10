@@ -1,39 +1,34 @@
 # =============================================================
-# 🧠 HealthRAG Assistant — Intelligent RAG-Style Health Chatbot
+# 🧠 HealthRAG Assistant — Intelligent RAG-style Health Chatbot
 # =============================================================
-# Modern UI + Section Summaries + Health Insights + Multi-turn Q&A
+# Section Summaries | AI Insights | True Conversational Memory
 # =============================================================
 
 import streamlit as st
 import PyPDF2
 from openai import OpenAI
-import re
 import io
 
 # -------------------------------------------------------------
-# 🔐 Secure API Key from Streamlit Secrets
+# 🔐 Secure API Key via Streamlit Secrets
 # -------------------------------------------------------------
 if "OPENROUTER_API_KEY" not in st.secrets:
     st.error("❌ Missing API key! Add in Streamlit → Settings → Secrets:\n\nOPENROUTER_API_KEY = sk-or-v1-xxxx")
     st.stop()
 
 OPENROUTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
-
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=OPENROUTER_API_KEY
-)
+client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
 MODEL = "x-ai/grok-4"
 
 # -------------------------------------------------------------
-# 🎨 Page Configuration and Custom Styling
+# 🎨 Streamlit Page Setup
 # -------------------------------------------------------------
-st.set_page_config(page_title="HealthRAG Assistant", layout="wide", page_icon="🧠")
+st.set_page_config(page_title="HealthRAG Assistant", page_icon="🧠", layout="wide")
 
 st.markdown("""
 <style>
 body {
-    background: linear-gradient(135deg, #021B79, #0575E6);
+    background: linear-gradient(135deg, #031628, #1e3c72, #2a5298);
     color: white;
 }
 h1, h2, h3, h4 {
@@ -43,73 +38,74 @@ h1, h2, h3, h4 {
 .stButton>button {
     background-color: #00ffcc;
     color: black;
-    font-weight: bold;
+    font-weight: 600;
     border-radius: 10px;
     padding: 0.6rem 1.2rem;
+    transition: 0.3s;
 }
 .stButton>button:hover {
     background-color: #00bfa6;
     color: white;
 }
-div[data-testid="stChatMessage"] {
-    background-color: rgba(255,255,255,0.08);
-    border-radius: 12px;
+.chat-bubble-user {
+    background-color: rgba(255,255,255,0.1);
+    border-radius: 10px;
     padding: 10px;
+    margin-bottom: 5px;
+}
+.chat-bubble-ai {
+    background-color: rgba(0,255,200,0.1);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
 }
 .insight-card {
     background-color: rgba(255,255,255,0.08);
     border-radius: 12px;
-    padding: 1rem;
-    margin-top: 1rem;
+    padding: 0.8rem 1rem;
+    margin-top: 0.5rem;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# 🧩 PDF Text Extraction
+# 🧩 PDF Extraction
 # -------------------------------------------------------------
 def extract_text_from_pdf(uploaded_file):
     try:
         reader = PyPDF2.PdfReader(uploaded_file)
-        text = ""
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
+        text = "".join(page.extract_text() or "" for page in reader.pages)
         return text.strip(), len(reader.pages)
     except Exception as e:
-        st.error(f"⚠️ Error extracting text: {e}")
+        st.error(f"⚠️ Error reading PDF: {e}")
         return "", 0
 
 # -------------------------------------------------------------
-# 🧠 Section-based Summarizer
+# 🧠 Section Summarizer
 # -------------------------------------------------------------
 def section_summarizer(text):
     prompt = f"""
-You are **HealthRAG Assistant**, a medical research analyzer.
-Identify the main sections (Abstract, Introduction, Methodology, Results, Discussion, Conclusion)
-and summarize each briefly.
-
-If a section is missing, skip it.
+You are HealthRAG Assistant. Summarize this medical document by section.
+If sections like Abstract, Methods, or Conclusion are missing, skip them.
 
 Text:
 {text[:12000]}
 
-Provide result as:
+Format response as:
 ### Abstract
-(summary)
+...
 ### Methods
-(summary)
+...
 ### Results
-(summary)
+...
 ### Conclusion
-(summary)
+...
 """
     try:
         res = client.chat.completions.create(
             model=MODEL,
             messages=[
-                {"role": "system", "content": "Summarize section-wise clearly and professionally."},
+                {"role": "system", "content": "Summarize research papers by sections clearly and concisely."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3,
@@ -120,49 +116,68 @@ Provide result as:
         return f"⚠️ Error generating summary: {e}"
 
 # -------------------------------------------------------------
-# 📊 Health Insight Extractor
+# 💡 AI-driven Insight Extraction
 # -------------------------------------------------------------
-def extract_health_insights(text):
-    """Finds useful metrics (accuracy %, sample size, etc.)"""
-    insights = []
-    metrics = re.findall(r'(\d+(?:\.\d+)?%)', text)
-    samples = re.findall(r'(\d+\s+(?:patients|subjects|samples|participants))', text, re.I)
-    if metrics:
-        insights.append(f"Performance Metrics Found: {', '.join(set(metrics))}")
-    if samples:
-        insights.append(f"Study Size Mentions: {', '.join(set(samples))}")
-    if not insights:
-        insights.append("No quantitative results detected.")
-    return insights
-
-# -------------------------------------------------------------
-# 💬 Multi-turn Chat (Q&A Memory)
-# -------------------------------------------------------------
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-
-def chat_with_pdf(context, user_question):
-    history_text = "\n".join([f"User: {u}\nAI: {a}" for u, a in st.session_state.chat_history[-3:]])
+def extract_ai_insights(pdf_text):
     prompt = f"""
-You are **HealthRAG Assistant**, a retrieval-augmented health research chatbot.
-Use the document context and conversation history to answer the new question.
+You are HealthRAG Insight Extractor.
+Read the research text and summarize key **quantitative and qualitative insights**.
 
-Document Context:
-{context[:12000]}
+Focus on:
+- Dataset size / study population
+- Performance metrics (accuracy, F1, etc.)
+- Novel contributions
+- Limitations
+- Clinical or real-world impact
 
-Conversation History:
-{history_text}
+Text:
+{pdf_text[:8000]}
 
-User Question:
-{user_question}
-
-Answer only based on the above text.
+Return bullet points only.
 """
     try:
         res = client.chat.completions.create(
             model=MODEL,
             messages=[
-                {"role": "system", "content": "You are an accurate health assistant specialized in research-based answers."},
+                {"role": "system", "content": "You extract insights from medical research papers."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=500
+        )
+        return res.choices[0].message.content.strip()
+    except Exception as e:
+        return f"⚠️ Error generating insights: {e}"
+
+# -------------------------------------------------------------
+# 💬 Conversational Chat with Memory
+# -------------------------------------------------------------
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+def chat_with_memory(context, user_question):
+    """Use last few turns for conversational continuity"""
+    history = "\n".join([f"User: {u}\nAI: {a}" for u, a in st.session_state.chat_history[-3:]])
+    prompt = f"""
+You are HealthRAG Assistant, a retrieval-augmented LLM.
+Use document text and conversation history to answer naturally.
+
+Document Context:
+{context[:10000]}
+
+Conversation:
+{history}
+
+User Question:
+{user_question}
+
+Answer precisely and conversationally using only context.
+"""
+    try:
+        res = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": "Be a helpful, medically accurate assistant."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
@@ -175,57 +190,51 @@ Answer only based on the above text.
         return f"⚠️ Error generating answer: {e}"
 
 # -------------------------------------------------------------
-# 🧠 Streamlit App Layout
+# 🧠 Streamlit UI
 # -------------------------------------------------------------
 st.title("🧠 HealthRAG Assistant")
-st.caption("Retrieval-Augmented Health Research Chatbot with Section Summaries, Insights, and Interactive Q&A")
+st.caption("Retrieval-Augmented Health Chatbot with Section Summaries, AI Insights, and True Conversational Memory")
 
 uploaded_file = st.file_uploader("📤 Upload your medical research paper (PDF)", type=["pdf"])
 
 if uploaded_file:
     pdf_text, pages = extract_text_from_pdf(uploaded_file)
-    st.success(f"✅ Extracted content from {pages} pages")
+    st.success(f"✅ Extracted {pages} pages successfully")
 
-    # Section Summaries
+    # === Summarization ===
     st.subheader("📑 Section-wise Summary")
     if st.button("🩺 Generate Structured Summary"):
-        with st.spinner("Analyzing document and generating structured summary..."):
+        with st.spinner("Analyzing document..."):
             summary = section_summarizer(pdf_text)
             st.markdown(summary)
 
-        # Insights
-        insights = extract_health_insights(pdf_text)
-        with st.container():
-            st.markdown("### 💡 Health Insights")
-            for ins in insights:
-                st.markdown(f"<div class='insight-card'>🔹 {ins}</div>", unsafe_allow_html=True)
+        st.subheader("💡 Key Health Insights")
+        with st.spinner("Extracting key metrics and insights..."):
+            insights = extract_ai_insights(pdf_text)
+            st.markdown(f"<div class='insight-card'>{insights}</div>", unsafe_allow_html=True)
 
-        # Download option
-        summary_full = f"{summary}\n\nHealth Insights:\n" + "\n".join(insights)
         st.download_button(
-            "⬇️ Download Full Summary & Insights",
-            data=summary_full.encode("utf-8"),
+            "⬇️ Download Summary & Insights",
+            data=(summary + "\n\n" + insights).encode("utf-8"),
             file_name="HealthRAG_Report.txt",
             mime="text/plain"
         )
 
     st.divider()
 
-    # Chat Q&A Section
-    st.subheader("💬 Interactive Q&A Chat")
-    user_q = st.text_input("Ask your question here:")
-    if st.button("🤖 Ask HealthRAG"):
-        if user_q.strip():
-            with st.spinner("Analyzing..."):
-                answer = chat_with_pdf(pdf_text, user_q)
-            st.markdown(f"**🧠 Answer:** {answer}")
+    # === Chat Section ===
+    st.subheader("💬 Interactive Chat with Memory")
+    for q, a in st.session_state.chat_history:
+        st.markdown(f"<div class='chat-bubble-user'><b>You:</b> {q}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='chat-bubble-ai'><b>HealthRAG:</b> {a}</div>", unsafe_allow_html=True)
 
-            # Display recent chat history
-            st.markdown("### 🕓 Recent Conversation")
-            for q, a in reversed(st.session_state.chat_history[-3:]):
-                st.markdown(f"**You:** {q}")
-                st.markdown(f"**HealthRAG:** {a}")
+    user_q = st.text_input("Ask your question here:")
+    if st.button("🤖 Ask"):
+        if user_q.strip():
+            with st.spinner("Thinking..."):
+                answer = chat_with_memory(pdf_text, user_q)
+            st.markdown(f"<div class='chat-bubble-ai'><b>🧠 HealthRAG:</b> {answer}</div>", unsafe_allow_html=True)
         else:
-            st.warning("Please enter a valid question.")
+            st.warning("Please type a question.")
 else:
-    st.info("📥 Upload a research paper to start using HealthRAG Assistant.")
+    st.info("📥 Upload a research paper to begin.")
