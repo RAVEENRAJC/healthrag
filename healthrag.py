@@ -1,100 +1,74 @@
 # =============================================================
-# 🤖 HealthRAG Assistant — Retrieval-Augmented Health Chatbot
+# 🧠 HealthRAG Assistant — Intelligent RAG-Style Health Chatbot
 # =============================================================
-# Streamlit + OpenRouter (Grok LLM) + Secure Secrets Handling
+# Modern UI + Section Summaries + Health Insights + Multi-turn Q&A
 # =============================================================
 
 import streamlit as st
 import PyPDF2
 from openai import OpenAI
+import re
 import io
 
 # -------------------------------------------------------------
-# 🔐 Secure API Key Handling (Streamlit Secrets)
+# 🔐 Secure API Key from Streamlit Secrets
 # -------------------------------------------------------------
 if "OPENROUTER_API_KEY" not in st.secrets:
-    st.error(
-        "❌ API key missing! Please add it under Streamlit → Settings → Secrets as:\n\n"
-        "OPENROUTER_API_KEY = 'sk-or-v1-xxxxxxxxxxxxxxxxxxxx'"
-    )
+    st.error("❌ Missing API key! Add in Streamlit → Settings → Secrets:\n\nOPENROUTER_API_KEY = sk-or-v1-xxxx")
     st.stop()
 
 OPENROUTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
 
-# -------------------------------------------------------------
-# 🧠 Initialize OpenRouter Client (Grok Model)
-# -------------------------------------------------------------
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY
 )
-
-MODEL = "grok-beta"
-
-# -------------------------------------------------------------
-# ⚙️ Streamlit Page Config
-# -------------------------------------------------------------
-st.set_page_config(
-    page_title="HealthRAG Assistant",
-    layout="wide",
-    page_icon="🧠"
-)
+MODEL = "x-ai/grok-4"
 
 # -------------------------------------------------------------
-# 🎨 Custom Modern UI Styling
+# 🎨 Page Configuration and Custom Styling
 # -------------------------------------------------------------
+st.set_page_config(page_title="HealthRAG Assistant", layout="wide", page_icon="🧠")
+
 st.markdown("""
-    <style>
-    body {
-        background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
-        color: white;
-    }
-    .block-container {
-        padding-top: 2rem;
-        max-width: 1100px;
-    }
-    h1, h2, h3, h4 {
-        color: #00ffcc !important;
-        text-shadow: 0 0 10px #00ffcc;
-    }
-    .stButton>button {
-        background-color: #00ffcc;
-        color: black;
-        font-weight: 600;
-        border-radius: 10px;
-        border: none;
-        padding: 0.6rem 1.2rem;
-        transition: 0.3s;
-    }
-    .stButton>button:hover {
-        background-color: #00bfa6;
-        color: white;
-        transform: scale(1.03);
-    }
-    .stTextInput>div>div>input {
-        background-color: rgba(255,255,255,0.1);
-        color: white;
-        border-radius: 8px;
-    }
-    .uploadedFile {
-        background-color: rgba(255,255,255,0.1);
-        border-radius: 10px;
-        padding: 10px;
-    }
-    .footer {
-        text-align: center;
-        color: #aaa;
-        font-size: 0.9rem;
-        padding-top: 1rem;
-    }
-    </style>
+<style>
+body {
+    background: linear-gradient(135deg, #021B79, #0575E6);
+    color: white;
+}
+h1, h2, h3, h4 {
+    color: #00ffcc !important;
+    text-shadow: 0 0 10px #00ffcc;
+}
+.stButton>button {
+    background-color: #00ffcc;
+    color: black;
+    font-weight: bold;
+    border-radius: 10px;
+    padding: 0.6rem 1.2rem;
+}
+.stButton>button:hover {
+    background-color: #00bfa6;
+    color: white;
+}
+div[data-testid="stChatMessage"] {
+    background-color: rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 10px;
+}
+.insight-card {
+    background-color: rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+</style>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
 # 🧩 PDF Text Extraction
 # -------------------------------------------------------------
 def extract_text_from_pdf(uploaded_file):
-    """Extracts all text content from a PDF file."""
     try:
         reader = PyPDF2.PdfReader(uploaded_file)
         text = ""
@@ -108,116 +82,150 @@ def extract_text_from_pdf(uploaded_file):
         return "", 0
 
 # -------------------------------------------------------------
-# 🩺 Summarization Function
+# 🧠 Section-based Summarizer
 # -------------------------------------------------------------
-def summarize_health_paper(pdf_text):
-    """Summarize a health/medical research paper."""
+def section_summarizer(text):
     prompt = f"""
-You are **HealthRAG Assistant**, an intelligent health research summarizer.
-Summarize the following medical or health-related document clearly and concisely.
+You are **HealthRAG Assistant**, a medical research analyzer.
+Identify the main sections (Abstract, Introduction, Methodology, Results, Discussion, Conclusion)
+and summarize each briefly.
 
-📄 Text:
-{pdf_text[:12000]}
+If a section is missing, skip it.
 
-Provide the summary in this format:
-1. 🩺 Title or Topic
-2. 🎯 Objective
-3. ⚗️ Methods Used
-4. 🔑 Key Findings
-5. 💬 Conclusion
+Text:
+{text[:12000]}
+
+Provide result as:
+### Abstract
+(summary)
+### Methods
+(summary)
+### Results
+(summary)
+### Conclusion
+(summary)
 """
     try:
-        response = client.chat.completions.create(
+        res = client.chat.completions.create(
             model=MODEL,
             messages=[
-                {"role": "system", "content": "You are a precise and professional health research summarizer."},
+                {"role": "system", "content": "Summarize section-wise clearly and professionally."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3,
-            max_tokens=1000
+            max_tokens=1200
         )
-        return response.choices[0].message.content.strip()
+        return res.choices[0].message.content.strip()
     except Exception as e:
         return f"⚠️ Error generating summary: {e}"
 
 # -------------------------------------------------------------
-# 💬 Question Answering Function
+# 📊 Health Insight Extractor
 # -------------------------------------------------------------
-def ask_health_question(pdf_text, question):
-    """Answer user questions based only on PDF content."""
+def extract_health_insights(text):
+    """Finds useful metrics (accuracy %, sample size, etc.)"""
+    insights = []
+    metrics = re.findall(r'(\d+(?:\.\d+)?%)', text)
+    samples = re.findall(r'(\d+\s+(?:patients|subjects|samples|participants))', text, re.I)
+    if metrics:
+        insights.append(f"Performance Metrics Found: {', '.join(set(metrics))}")
+    if samples:
+        insights.append(f"Study Size Mentions: {', '.join(set(samples))}")
+    if not insights:
+        insights.append("No quantitative results detected.")
+    return insights
+
+# -------------------------------------------------------------
+# 💬 Multi-turn Chat (Q&A Memory)
+# -------------------------------------------------------------
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+def chat_with_pdf(context, user_question):
+    history_text = "\n".join([f"User: {u}\nAI: {a}" for u, a in st.session_state.chat_history[-3:]])
     prompt = f"""
-You are **HealthRAG Assistant**, a retrieval-augmented LLM specialized in health and medicine.
-Answer the question using ONLY the information from the following document text.
+You are **HealthRAG Assistant**, a retrieval-augmented health research chatbot.
+Use the document context and conversation history to answer the new question.
 
-📄 Text:
-{pdf_text[:12000]}
+Document Context:
+{context[:12000]}
 
-❓ Question:
-{question}
+Conversation History:
+{history_text}
 
-🧠 Answer (based only on the text, do not add external info):
+User Question:
+{user_question}
+
+Answer only based on the above text.
 """
     try:
-        response = client.chat.completions.create(
+        res = client.chat.completions.create(
             model=MODEL,
             messages=[
-                {"role": "system", "content": "Answer strictly based on the provided medical text."},
+                {"role": "system", "content": "You are an accurate health assistant specialized in research-based answers."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
             max_tokens=800
         )
-        return response.choices[0].message.content.strip()
+        answer = res.choices[0].message.content.strip()
+        st.session_state.chat_history.append((user_question, answer))
+        return answer
     except Exception as e:
         return f"⚠️ Error generating answer: {e}"
 
 # -------------------------------------------------------------
-# 🧠 App Interface
+# 🧠 Streamlit App Layout
 # -------------------------------------------------------------
 st.title("🧠 HealthRAG Assistant")
-st.caption("Retrieval-Augmented Intelligent Health Chatbot (Powered by Grok LLM via OpenRouter)")
+st.caption("Retrieval-Augmented Health Research Chatbot with Section Summaries, Insights, and Interactive Q&A")
 
-uploaded_file = st.file_uploader("📤 Upload your health or medical research paper (PDF)", type=["pdf"])
+uploaded_file = st.file_uploader("📤 Upload your medical research paper (PDF)", type=["pdf"])
 
 if uploaded_file:
-    st.success(f"✅ Uploaded: {uploaded_file.name}")
     pdf_text, pages = extract_text_from_pdf(uploaded_file)
+    st.success(f"✅ Extracted content from {pages} pages")
 
-    if pdf_text:
-        st.info(f"📘 Extracted text from **{pages} pages** successfully.")
+    # Section Summaries
+    st.subheader("📑 Section-wise Summary")
+    if st.button("🩺 Generate Structured Summary"):
+        with st.spinner("Analyzing document and generating structured summary..."):
+            summary = section_summarizer(pdf_text)
+            st.markdown(summary)
 
-        # === Summarization Section ===
-        st.subheader("✨ Generate Summary")
-        if st.button("🩺 Summarize Document"):
-            with st.spinner("Generating structured summary..."):
-                summary = summarize_health_paper(pdf_text)
-            st.markdown("### 📋 Summary")
-            st.write(summary)
+        # Insights
+        insights = extract_health_insights(pdf_text)
+        with st.container():
+            st.markdown("### 💡 Health Insights")
+            for ins in insights:
+                st.markdown(f"<div class='insight-card'>🔹 {ins}</div>", unsafe_allow_html=True)
 
-            if summary and not summary.startswith("⚠️"):
-                st.download_button(
-                    label="⬇️ Download Summary (.txt)",
-                    data=summary.encode("utf-8"),
-                    file_name="HealthRAG_Summary.txt",
-                    mime="text/plain"
-                )
+        # Download option
+        summary_full = f"{summary}\n\nHealth Insights:\n" + "\n".join(insights)
+        st.download_button(
+            "⬇️ Download Full Summary & Insights",
+            data=summary_full.encode("utf-8"),
+            file_name="HealthRAG_Report.txt",
+            mime="text/plain"
+        )
 
-        st.divider()
+    st.divider()
 
-        # === Q&A Section ===
-        st.subheader("💬 Ask a Question About the Document")
-        question = st.text_input("Enter your question here:")
-        if st.button("🤖 Get Answer"):
-            if question.strip():
-                with st.spinner("Analyzing document for the answer..."):
-                    answer = ask_health_question(pdf_text, question)
-                st.markdown("### 🧠 Answer")
-                st.write(answer)
-            else:
-                st.warning("⚠️ Please enter a valid question.")
-    else:
-        st.error("⚠️ Could not extract text. Ensure the PDF is text-based (not scanned).")
+    # Chat Q&A Section
+    st.subheader("💬 Interactive Q&A Chat")
+    user_q = st.text_input("Ask your question here:")
+    if st.button("🤖 Ask HealthRAG"):
+        if user_q.strip():
+            with st.spinner("Analyzing..."):
+                answer = chat_with_pdf(pdf_text, user_q)
+            st.markdown(f"**🧠 Answer:** {answer}")
+
+            # Display recent chat history
+            st.markdown("### 🕓 Recent Conversation")
+            for q, a in reversed(st.session_state.chat_history[-3:]):
+                st.markdown(f"**You:** {q}")
+                st.markdown(f"**HealthRAG:** {a}")
+        else:
+            st.warning("Please enter a valid question.")
 else:
-    st.info("📥 Upload a medical research paper to begin.")
-
-st.markdown("<div class='footer'>🚀 HealthRAG Assistant | Built with ❤️ using Streamlit & OpenRouter Grok</div>", unsafe_allow_html=True)
+    st.info("📥 Upload a research paper to start using HealthRAG Assistant.")
